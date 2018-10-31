@@ -35,7 +35,7 @@ at the top-level directory.
 
     Arguments   
     =========   
-
+ 
     ISPEC   (input) int
             Specifies the parameter to be returned as the value of SP_IENV_DIST.   
             = 1: the panel size w; a panel consists of w consecutive
@@ -62,8 +62,10 @@ at the top-level directory.
 </pre>
 */
 
+
 #include <stdlib.h>
 #include <stdio.h>
+
 
 int_t
 sp_ienv_dist(int_t ispec)
@@ -89,7 +91,7 @@ sp_ienv_dist(int_t ispec)
                 return(atoi(ttemp));
             }
             else
-            return 2;
+            return 20;
             
 	case 3: 
             ttemp = getenv("NSUP");
@@ -98,10 +100,13 @@ sp_ienv_dist(int_t ispec)
                 return(atoi(ttemp));
             }
             else
-            return 128;
+            return 128;	
 
 #endif
-        case 6: return (5);
+        case 6: 
+            ttemp = getenv("FILL");
+            if ( ttemp ) return(atoi(ttemp));
+            else return (5);
         case 7:
 	    ttemp = getenv ("N_GEMM");
 	    if (ttemp) return atoi (ttemp);

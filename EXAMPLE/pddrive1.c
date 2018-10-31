@@ -55,10 +55,10 @@ int main(int argc, char *argv[])
     gridinfo_t grid;
     double   *berr;
     double   *b, *xtrue, *b1;
-    int    i, j, m, n;
+    int    i, j, m, n, ii;
     int    nprow, npcol;
     int    iam, info, ldb, ldx, nrhs;
-    char     **cpp, c;
+    char     **cpp, c, *postfix;
     FILE *fp, *fopen();
     int cpp_defs();
 
@@ -122,10 +122,17 @@ int main(int argc, char *argv[])
     CHECK_MALLOC(iam, "Enter main()");
 #endif
 
+	for(ii = 0;ii<strlen(*cpp);ii++){
+		if((*cpp)[ii]=='.'){
+			postfix = &((*cpp)[ii+1]);
+		}
+	}	
+	// printf("%s\n", postfix);
+
     /* ------------------------------------------------------------
        GET THE MATRIX FROM FILE AND SETUP THE RIGHT HAND SIDE. 
        ------------------------------------------------------------*/
-    dcreate_matrix(&A, nrhs, &b, &ldb, &xtrue, &ldx, fp, &grid);
+    dcreate_matrix_postfix(&A, nrhs, &b, &ldb, &xtrue, &ldx, fp, postfix, &grid);
     if ( !(b1 = doubleMalloc_dist(ldb * nrhs)) )
         ABORT("Malloc fails for b1[]");
     for (j = 0; j < nrhs; ++j)
@@ -142,7 +149,7 @@ int main(int argc, char *argv[])
         options.Fact = DOFACT;
         options.Equil = YES;
         options.ColPerm = METIS_AT_PLUS_A;
-        options.RowPerm = LargeDiag;
+        options.RowPerm = LargeDiag_MC64;
         options.ReplaceTinyPivot = NO;
         options.Trans = NOTRANS;
         options.IterRefine = DOUBLE;
@@ -205,7 +212,7 @@ int main(int argc, char *argv[])
        ------------------------------------------------------------*/
     PStatFree(&stat);
     Destroy_CompRowLoc_Matrix_dist(&A);
-    ScalePermstructFree(&ScalePermstruct);
+    ScalePermstructFree(&ScalePermstruct);   
     Destroy_LU(n, &grid, &LUstruct);
     LUstructFree(&LUstruct);
     if ( options.SolveInitialized ) {

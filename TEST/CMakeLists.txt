@@ -1,11 +1,14 @@
 include_directories(${SuperLU_DIST_SOURCE_DIR}/SRC)
 
 # Libs linked to all of the tests
-set(all_link_libs superlu_dist ${BLAS_LIB} m)
+set(all_link_libs superlu_dist ${BLAS_LIB})
+if (NOT MSVC)
+  list(APPEND all_link_libs m)
+endif ()
 
 set(MATRICES ../EXAMPLE/g20.rua)  # sample sparse matrix from a file
-set(NPROWS 1 2)		  # process rows
-set(NPCOLS 1 3) 	  # process columns 
+set(NPROWS 1 2 5)	  # process rows
+set(NPCOLS 1 2 3) 	  # process columns 
 set(NVAL 9 19)	  	  # generated matrix dimensions
 set(NRHS 1 3)		  # number of RHS
 # set(FILLRATIO 2 10)	  # estimated fill ratio

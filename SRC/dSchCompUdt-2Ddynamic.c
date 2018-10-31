@@ -16,16 +16,18 @@ at the top-level directory.
  *        Uses 2D partitioning for the scatter phase.
  *
  * <pre>
- * -- Distributed SuperLU routine (version 5.2) --
+ * -- Distributed SuperLU routine (version 5.4) --
  * Lawrence Berkeley National Lab, Univ. of California Berkeley.
  * October 1, 2014
  *
- * Modified: September 14, 2017
+ * Modified:
+ *   September 14, 2017
  *   - First gather U-panel, then depending on "ldu" (excluding leading zeros), 
  *     gather only trailing columns of the L-panel corresponding to the nonzero
  *     of U-rows.
  *   - Padding zeros for nice dimensions of GEMM.
  *
+ *  June 1, 2018  add parallel AWPM pivoting; add back arrive_at_ublock()
  */
 
 #define SCHEDULE_STRATEGY guided 
@@ -138,13 +140,10 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 	 ncols = 0; /* Total number of nonzero columns in U(k,:) */
 	 int temp_ncols = 0;
 
-#if 0
 	 /* jj0 contains the look-ahead window that was updated in 
 	    dlook_ahead_update.c. Now the search can continue from that point,
 	    not to start from block 0. */
-	 iukp = iukp0; /* point to the first block in index[] */
-	 rukp = rukp0; /* point to the start of nzval[] */
-#else
+#if 0 // Sherry comment out 5/21/208
 	 /* Save pointers at location right after look-ahead window
 	    for later restart. */
 	 iukp0 = iukp;
@@ -160,8 +159,8 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
   	  */
 	 for (j = jj0; j < nub; ++j) { /* jj0 starts after look-ahead window. */
 	     temp_ncols = 0;
-#if 0
-	     /* Sherry - can remove following call, since perm_u == Identity  */
+#if 1
+	     /* Cannot remove following call, since perm_u != Identity  */
 	     arrive_at_ublock(
 			      j, &iukp, &rukp, &jb, &ljb, &nsupc,
 			      iukp0, rukp0, usub, perm_u, xsup, grid
@@ -194,7 +193,7 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 
 	     Ublock_info[j].full_u_cols = temp_ncols;
 	     ncols += temp_ncols;
-#if 1	     
+#if 0 // Sherry comment out 5/31/2018 */
 	     /* Jump number of nonzeros in block U(k,jj);
 		Move to block U(k,j+1) in nzval[] array.  */
 	     rukp += usub[iukp - 1];
@@ -253,7 +252,7 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 
             /* == processing each of the remaining columns in parallel == */
 #if 0
-	    /* Sherry - can remove following call, since perm_u == Identity  */
+	    /* Can remove following call, since search was already done.  */
             arrive_at_ublock(j, &iukp, &rukp, &jb, &ljb, &nsupc,
 			     iukp0, rukp0, usub,perm_u, xsup, grid);
 #else
@@ -272,19 +271,12 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 #if (_OPENMP>=201307)
 #pragma omp simd
 #endif
-		    for (i=0; i<segsize; ++i) tempu[i+lead_zero] = uval[rukp+i];
-
+		    for (i = 0; i < segsize; ++i) 
+                    	tempu[i+lead_zero] = uval[rukp+i];
                     rukp += segsize;
-#if 0
-		    tempu += segsize;
-#else
                     tempu += gemm_k_pad;
-#endif
                 }
 	    }
-#if 0
-	    rukp -= usub[iukp - 1]; /* Return to start of U(k,j). */
-#endif
         }   /* parallel for j = jj0 .. nub */
 
 #if 0
@@ -309,7 +301,7 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 #ifdef _OPENMP
 #pragma omp parallel for private(j,jj,tempu,tempv) default (shared)
 #endif
-     for (int i = 0; i < lookAheadBlk; ++i) {
+     for (i = 0; i < lookAheadBlk; ++i) {
 	 int StRowDest, temp_nbrow;
 	 if ( i==0 ) {
 	     StRowDest = 0;
@@ -347,10 +339,10 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 
      /* Loop through the remaining blocks to copy Lval into the buffer */
 #ifdef _OPENMP
-#pragma omp parallel for private(i,j,jj,tempu,tempv) default (shared)	\
+#pragma omp parallel for private(i,j,jj,tempu,tempv) default (shared) \
     schedule(SCHEDULE_STRATEGY)
 #endif
-     for (i = 0; i < RemainBlk; ++i) {
+     for (int i = 0; i < RemainBlk; ++i) {
          int StRowDest, temp_nbrow;
          if ( i==0 )  {
 	     StRowDest  = 0;
@@ -365,7 +357,7 @@ if ( msg0 && msg2 ) { /* L(:,k) and U(k,:) are not empty. */
 	 /* Now copying a block into L remaining buffer */
 	 // #pragma omp parallel for (gives slow down)
 	 // for (int j = 0; j < knsupc; ++j) {
-	 for (j = knsupc-ldu; j < knsupc; ++j) {
+	 for (int j = knsupc-ldu; j < knsupc; ++j) {
 	     // printf("StRowDest %d Rnbrow %d StRowSource %d \n", StRowDest,Rnbrow ,StRowSource);
 #if 1
 	     /* Better let compiler generate memcpy or vectorized code. */

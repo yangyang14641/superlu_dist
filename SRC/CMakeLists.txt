@@ -9,11 +9,20 @@ set(headers
     supermatrix.h
     util_dist.h
     colamd.h
-    superlu_dist_config.h
+    TreeBcast_slu.hpp
+    TreeReduce_slu.hpp	
+    TreeBcast_slu_impl.hpp
+    TreeReduce_slu_impl.hpp	
+    ${CMAKE_CURRENT_BINARY_DIR}/superlu_dist_config.h
 )
+if (MSVC)
+  list(APPEND headers wingetopt.h)
+endif ()
 
 # first: precision-independent files
+#  global.cpp
 set(sources
+  TreeInterface.cpp
   sp_ienv.c
   etree.c 
   sp_colorder.c
@@ -37,6 +46,14 @@ set(sources
   colamd.c
   superlu_dist_version.c
 )
+if (MSVC)
+  list(APPEND sources wingetopt.c)
+endif ()
+
+if (HAVE_COMBBLAS)
+  list(APPEND sources c2cpp_GetAWPM.cpp AWPM_CombBLAS.hpp)
+endif()
+
 set_source_files_properties(superlu_timer.c PROPERTIES COMPILE_FLAGS -O0)
 
 if(enable_double)
@@ -56,6 +73,8 @@ if(enable_double)
     dreadhb.c
     dreadrb.c
     dreadtriple.c
+    dreadtriple_noheader.c
+    dbinary_io.c	
     dreadMM.c
     pdgsequ.c
     pdlaqgs.c
@@ -97,6 +116,8 @@ if(enable_complex16)
     zreadhb.c
     zreadrb.c
     zreadtriple.c
+    zreadtriple_noheader.c
+    zbinary_io.c	
     zreadMM.c
     pzgsequ.c
     pzlaqgs.c
@@ -121,18 +142,53 @@ if(enable_complex16)
 endif()
 
 add_library(superlu_dist ${sources} ${HEADERS})
-target_link_libraries(superlu_dist
-                      ${MPI_C_LIBRARIES} ${BLAS_LIB} ${PARMETIS_LIB} m)
-set_target_properties(superlu_dist PROPERTIES
-                      VERSION ${PROJECT_VERSION} SOVERSION ${VERSION_MAJOR}
-)
+set(targets superlu_dist)
+if (BUILD_SHARED_LIBS AND BUILD_STATIC_LIBS)
+  # build both shared and static libs
+  add_library(superlu_dist-static STATIC ${sources} ${HEADERS})
+  list(APPEND targets superlu_dist-static)
+endif()
+
+set(superlu_dist_libs ${MPI_C_LIBRARIES} ${BLAS_LIB} ${LAPACK_LIB}
+    ${PARMETIS_LIB} ${COMBBLAS_LIB})
+
+if (NOT MSVC)
+  list(APPEND superlu_dist_libs m)
+endif ()
+
+foreach(target ${targets})
+    target_link_libraries(${target} ${superlu_dist_libs})
+    if (HAVE_COMBBLAS)
+        set_target_properties(${target} PROPERTIES
+                              OUTPUT_NAME superlu_dist
+                              VERSION ${PROJECT_VERSION}
+                              SOVERSION ${VERSION_MAJOR}
+			      LINKER_LANGUAGE CXX
+			      )
+    else()
+        set_target_properties(${target} PROPERTIES
+                              OUTPUT_NAME superlu_dist
+                              VERSION ${PROJECT_VERSION}
+                              SOVERSION ${VERSION_MAJOR}
+			      )
+    endif()
+endforeach(target)
+
+target_compile_definitions(superlu_dist PRIVATE SUPERLU_DIST_EXPORTS)
+if(MSVC AND BUILD_SHARED_LIBS)
+  set_target_properties(superlu_dist PROPERTIES
+                        WINDOWS_EXPORT_ALL_SYMBOLS ON
+  )
+endif()
 
 # Define GNU standard installation directories
 include(GNUInstallDirs)
 
-install(TARGETS superlu_dist
-# DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-     DESTINATION ${CMAKE_INSTALL_LIBDIR}
+install(TARGETS ${targets}
+# DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION "${INSTALL_BIN_DIR}"
+    LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+    ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
 )
 install(FILES ${headers}
 # DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
